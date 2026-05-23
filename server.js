@@ -186,3 +186,47 @@ app.post("/api/reset-password", async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`✅ BioScan backend running on http://localhost:${PORT}`));
+
+app.post("/api/email-report", async (req, res) => {
+  const { to, caseId, doctor, pathogen, riskLevel, biomarker, sensor, treatment, createdAt } = req.body;
+  try {
+    await transporter.sendMail({
+      from: `"ChemoSense" <${process.env.EMAIL_USER}>`,
+      to: to,
+      subject: `ChemoSense Report — ${caseId} — ${pathogen}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #0d9488; padding: 20px; color: white;">
+            <h1 style="margin:0; font-size: 20px;">ChemoSense Clinical Report</h1>
+          </div>
+          <div style="padding: 20px; background: #f0fdfa;">
+            <p><strong>Case ID:</strong> ${caseId}</p>
+            <p><strong>Date:</strong> ${new Date(createdAt).toLocaleString()}</p>
+            <p><strong>Doctor:</strong> ${doctor}</p>
+          </div>
+          <div style="padding: 20px;">
+            <h2 style="color: #0d9488;">Pathogen Detected</h2>
+            <p style="font-size: 18px; font-weight: bold; font-style: italic;">${pathogen}</p>
+            <p><span style="background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${riskLevel}</span></p>
+            <h2 style="color: #0d9488;">Detection</h2>
+            <p><strong>Biomarker:</strong> ${biomarker}</p>
+            <p><strong>Sensor:</strong> ${sensor}</p>
+            <h2 style="color: #0d9488;">Treatment</h2>
+            <ul>
+              ${treatment.map((t: string) => `<li>${t}</li>`).join("")}
+            </ul>
+            <p style="background: #fef3c7; padding: 10px; border-radius: 4px; font-size: 12px;">
+              ⚠️ Confirm by culture and sensitivity. Not a substitute for laboratory confirmation.
+            </p>
+          </div>
+          <div style="background: #0d9488; padding: 10px; color: white; font-size: 11px; text-align: center;">
+            ChemoSense — Clinical decision support
+          </div>
+        </div>
+      `,
+    });
+    res.json({ success: true, message: "Report emailed successfully!" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
