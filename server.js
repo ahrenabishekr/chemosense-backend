@@ -1,3 +1,4 @@
+const bcrypt = require("bcrypt");
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
@@ -135,7 +136,7 @@ app.post("/api/login", async (req, res) => {
       [student_id, student_id]
     );
     if (!rows.length) return res.status(401).json({ error: "Invalid Student ID or password" });
-    if (rows[0].password !== password) return res.status(401).json({ error: "Invalid password" });
+    if (!await bcrypt.compare(password, rows[0].password)) return res.status(401).json({ error: "Invalid password" });
     const { password: _, ...user } = rows[0];
     res.json(user);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -146,7 +147,7 @@ app.post("/api/register", async (req, res) => {
   try {
     const [r] = await db.query(
       "INSERT INTO users (name, email, password, role, student_id) VALUES (?, ?, ?, ?, ?)",
-      [name, email, password, role || "doctor", student_id]
+      [name, email, await bcrypt.hash(password, 10), role || "doctor", student_id]
     );
     res.json({ id: r.insertId, name, email, role, student_id });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -178,7 +179,7 @@ app.post("/api/reset-password", async (req, res) => {
     const [rows] = await db.query("SELECT * FROM reset_tokens WHERE token = ? AND expires_at > NOW()", [token]);
     if (!rows.length) return res.status(400).json({ error: "Invalid or expired token" });
     const { student_id } = rows[0];
-    await db.query("UPDATE users SET password = ? WHERE student_id = ?", [new_password, student_id]);
+    await db.query("UPDATE users SET password = ? WHERE student_id = ?", [await bcrypt.hash(new_password, 10), student_id]);
     await db.query("DELETE FROM reset_tokens WHERE token = ?", [token]);
     res.json({ success: true, message: "Password reset successfully!" });
   } catch (err) { res.status(500).json({ error: err.message }); }
