@@ -81,6 +81,18 @@ app.post("/api/scans", async (req, res) => {
       "INSERT INTO scans (sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [sensor_id, patient_id, result || "positive", value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level]
     );
+    // Send scan completion notification
+    try {
+      const [users] = await db.query("SELECT email, name FROM users WHERE student_id = ?", [scanned_by]);
+      if (users.length) {
+        await transporter.sendMail({
+          from: "rahrenabishek2006@gmail.com",
+          to: users[0].email,
+          subject: "✅ ChemoSense — Scan Complete",
+          html: `<h2>Scan Completed</h2><p>Dear ${users[0].name},</p><p>Your scan has been completed successfully.</p><table border="1" cellpadding="8"><tr><td><b>Patient ID</b></td><td>${patient_id}</td></tr><tr><td><b>Pathogen</b></td><td>${pathogen_name || "N/A"}</td></tr><tr><td><b>Biomarker</b></td><td>${biomarker_name || "N/A"}</td></tr><tr><td><b>Result</b></td><td>${result || "positive"}</td></tr><tr><td><b>Risk Level</b></td><td>${risk_level || "N/A"}</td></tr></table><p>View full report at <a href="https://chemosense-app.onrender.com">ChemoSense</a></p>`
+        });
+      }
+    } catch (mailErr) { console.error("Mail error:", mailErr.message); }
     res.json({ id: r.insertId });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
