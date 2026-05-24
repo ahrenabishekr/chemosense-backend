@@ -162,7 +162,7 @@ app.post("/api/forgot-password", async (req, res) => {
     const token = crypto.randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + 3600000);
     await db.query("INSERT INTO reset_tokens (student_id, token, expires_at) VALUES (?, ?, ?)", [student_id, token, expires]);
-    const resetLink = `http://localhost:8082/reset-password?token=${token}`;
+    const resetLink = `https://chemosense-app.onrender.com/reset-password?token=${token}`;
     await transporter.sendMail({
       from: `"ChemoSense" <${process.env.EMAIL_USER}>`,
       to: user.email,
