@@ -213,7 +213,7 @@ app.post("/api/email-report", async (req, res) => {
             <p><strong>Sensor:</strong> ${sensor}</p>
             <h2 style="color: #0d9488;">Treatment</h2>
             <ul>
-              ${treatment.map((t: string) => `<li>${t}</li>`).join("")}
+              ${treatment.map((t) => `<li>${t}</li>`).join("")}
             </ul>
             <p style="background: #fef3c7; padding: 10px; border-radius: 4px; font-size: 12px;">
               ⚠️ Confirm by culture and sensitivity. Not a substitute for laboratory confirmation.
