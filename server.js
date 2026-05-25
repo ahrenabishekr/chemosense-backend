@@ -283,3 +283,42 @@ app.patch("/api/alerts/read-all", async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── SCAN → CASE AUTO-LINK ───────────────────────────────────
+app.post("/api/scans/full", async (req, res) => {
+  const { sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level } = req.body;
+  try {
+    // 1. Save the scan
+    const [scanResult] = await db.query(
+      "INSERT INTO scans (sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [sensor_id, patient_id, result || "positive", value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level]
+    );
+    const scan_id = scanResult.insertId;
+
+    // 2. Auto-create a linked case
+    const caseTitle = `${pathogen_name || "Unknown"} — ${patient_id}`;
+    const [caseResult] = await db.query(
+      "INSERT INTO cases (title, patient_name, patient_id, status, notes) VALUES (?, ?, ?, ?, ?)",
+      [caseTitle, patient_id, patient_id, "open", `Auto-created from scan. Biomarker: ${biomarker_name}. Risk: ${risk_level}.`]
+    );
+    const case_id = caseResult.insertId;
+
+    // 3. Link scan to case
+    await db.query("UPDATE scans SET case_id = ? WHERE id = ?", [case_id, scan_id]);
+
+    // 4. Auto-alert for critical/high
+    if (risk_level === "Critical" || risk_level === "High") {
+      await db.query(
+        "INSERT INTO alerts (type, title, message, patient_id, scan_id) VALUES (?, ?, ?, ?, ?)",
+        [
+          risk_level === "Critical" ? "critical_scan" : "high_scan",
+          `${risk_level} Detection: ${pathogen_name || "Unknown"}`,
+          `Biomarker ${biomarker_name || "unknown"} detected in patient ${patient_id}. Immediate review required.`,
+          patient_id, scan_id
+        ]
+      );
+    }
+
+    res.json({ scan_id, case_id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
