@@ -350,7 +350,7 @@ app.get("/api/cases/:id/report", async (req, res) => {
 
     doc.moveTo(50, 140).lineTo(545, 140).strokeColor("#e2e8f0").stroke();
 
-    const field = (label: string, value: string, x: number, y: number) => {
+    const field = (label, value, x, y) => {
       doc.fontSize(8).fill("#888").font("Helvetica").text(label.toUpperCase(), x, y);
       doc.fontSize(10).fill("#111").font("Helvetica-Bold").text(value || "—", x, y + 12);
     };
@@ -367,7 +367,7 @@ app.get("/api/cases/:id/report", async (req, res) => {
     if (scans.length === 0) {
       doc.fontSize(10).fill("#888").font("Helvetica").text("No scans linked to this case.", 50, y);
     } else {
-      scans.forEach((s: any, i: number) => {
+      scans.forEach((s, i) => {
         if (y > 700) { doc.addPage(); y = 50; }
         doc.rect(50, y, 495, 90).fill(i % 2 === 0 ? "#f8fafc" : "#fff").stroke("#e2e8f0");
         doc.fontSize(11).font("Helvetica-Bold").fill("#111").text(s.pathogen_name || "Unknown Pathogen", 60, y + 10);
@@ -396,5 +396,5 @@ app.get("/api/cases/:id/report", async (req, res) => {
       .text("⚠ This report is for clinical decision support only. Confirm by culture and sensitivity testing.", 50, 780, { width: 495, align: "center" });
 
     doc.end();
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
