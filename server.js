@@ -18,6 +18,15 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
+// ── HEALTH CHECK ────────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({ status: "healthy", timestamp: new Date().toISOString() });
+});
+
+app.get("/", (req, res) => {
+  res.json({ message: "ChemoSense API", version: "1.0.0" });
+});
+
 // ── SCAN ENGINE ─────────────────────────────────────────────
 app.post("/api/scan/symptoms", (req, res) => {
   const { text } = req.body;
@@ -81,7 +90,6 @@ app.post("/api/scans", async (req, res) => {
       "INSERT INTO scans (sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [sensor_id, patient_id, result || "positive", value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level]
     );
-    // Send scan completion notification
     try {
       const [users] = await db.query("SELECT email, name FROM users WHERE student_id = ?", [scanned_by]);
       if (users.length) {
@@ -197,9 +205,6 @@ app.post("/api/reset-password", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`✅ BioScan backend running on http://localhost:${PORT}`));
-
 app.post("/api/email-report", async (req, res) => {
   const { to, caseId, doctor, pathogen, riskLevel, biomarker, sensor, treatment, createdAt } = req.body;
   try {
@@ -243,3 +248,6 @@ app.post("/api/email-report", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`✅ BioScan backend running on http://localhost:${PORT}`));
