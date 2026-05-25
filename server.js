@@ -101,6 +101,16 @@ app.post("/api/scans", async (req, res) => {
         });
       }
     } catch (mailErr) { console.error("Mail error:", mailErr.message); }
+    // Auto-alert for critical scans
+    if ((risk_level === "Critical" || risk_level === "High") && r.insertId) {
+      await db.query(
+        "INSERT INTO alerts (type, title, message, patient_id, scan_id) VALUES (?, ?, ?, ?, ?)",
+        [risk_level === "Critical" ? "critical_scan" : "high_scan",
+         `${risk_level} Detection: ${pathogen_name || "Unknown"}`,
+         `Biomarker ${biomarker_name || "unknown"} detected in patient ${patient_id}. Immediate review required.`,
+         patient_id, r.insertId]
+      );
+    }
     res.json({ id: r.insertId });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -251,3 +261,25 @@ app.post("/api/email-report", async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`✅ BioScan backend running on http://localhost:${PORT}`));
+
+// ── ALERTS ──────────────────────────────────────────────────
+app.get("/api/alerts", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM alerts ORDER BY created_at DESC LIMIT 50");
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch("/api/alerts/:id/read", async (req, res) => {
+  try {
+    await db.query("UPDATE alerts SET is_read = 1 WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch("/api/alerts/read-all", async (req, res) => {
+  try {
+    await db.query("UPDATE alerts SET is_read = 1");
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
