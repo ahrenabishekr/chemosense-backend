@@ -398,3 +398,97 @@ app.get("/api/cases/:id/report", async (req, res) => {
     doc.end();
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── SENSOR READINGS & QS ALERTS ─────────────────────────────
+app.post("/api/sensors/:id/reading", async (req, res) => {
+  const { reading, unit } = req.body;
+  try {
+    const [[sensor]] = await db.query("SELECT * FROM sensors WHERE id = ?", [req.params.id]);
+    if (!sensor) return res.status(404).json({ error: "Sensor not found" });
+
+    const lod_crossed = reading >= sensor.lod_threshold ? 1 : 0;
+    const qs_activated = reading >= sensor.qs_threshold ? 1 : 0;
+    const signal_strength = Math.min(100, Math.round((reading / sensor.qs_threshold) * 100));
+
+    await db.query(
+      "INSERT INTO sensor_readings (sensor_id, reading, unit, signal_strength, qs_activated, lod_crossed) VALUES (?, ?, ?, ?, ?, ?)",
+      [req.params.id, reading, unit || sensor.reading_unit || "nM", signal_strength, qs_activated, lod_crossed]
+    );
+
+    await db.query("UPDATE sensors SET last_reading = ? WHERE id = ?", [reading, req.params.id]);
+
+    if (qs_activated) {
+      await db.query(
+        "INSERT INTO alerts (type, title, message, patient_id, scan_id) VALUES (?, ?, ?, ?, ?)",
+        ["qs_threshold", `QS Threshold Crossed: ${sensor.name}`,
+         `Sensor ${sensor.name} detected ${reading} ${unit || "nM"} — quorum sensing threshold exceeded. Biofilm formation likely imminent.`,
+         null, null]
+      );
+    } else if (lod_crossed) {
+      await db.query(
+        "INSERT INTO alerts (type, title, message, patient_id, scan_id) VALUES (?, ?, ?, ?, ?)",
+        ["lod_crossed", `LOD Crossed: ${sensor.name}`,
+         `Sensor ${sensor.name} detected ${reading} ${unit || "nM"} — limit of detection exceeded. Pathogen presence confirmed.`,
+         null, null]
+      );
+    }
+
+    res.json({ lod_crossed, qs_activated, signal_strength, reading });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get("/api/sensors/:id/readings", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM sensor_readings WHERE sensor_id = ? ORDER BY created_at DESC LIMIT 50",
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch("/api/sensors/:id/calibrate", async (req, res) => {
+  try {
+    await db.query(
+      "UPDATE sensors SET last_calibrated = NOW(), calibration_drift = 0.00 WHERE id = ?",
+      [req.params.id]
+    );
+    res.json({ success: true, calibrated_at: new Date() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── PATIENT TIMELINE ─────────────────────────────────────────
+app.get("/api/patients", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT patient_id, MAX(created_at) as last_scan, COUNT(*) as scan_count, MAX(risk_level) as max_risk FROM scans GROUP BY patient_id ORDER BY last_scan DESC"
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get("/api/patients/:patient_id/timeline", async (req, res) => {
+  try {
+    const [scans] = await db.query(
+      "SELECT * FROM scans WHERE patient_id = ? ORDER BY created_at ASC",
+      [req.params.patient_id]
+    );
+    const [cases] = await db.query(
+      "SELECT * FROM cases WHERE patient_id = ? ORDER BY created_at ASC",
+      [req.params.patient_id]
+    );
+    res.json({ scans, cases });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── TREATMENT OUTCOMES ───────────────────────────────────────
+app.patch("/api/cases/:id/outcome", async (req, res) => {
+  const { outcome, outcome_notes } = req.body;
+  try {
+    await db.query(
+      "UPDATE cases SET status = 'closed', notes = CONCAT(IFNULL(notes,''), '\n[Outcome: ', ?, '] ', IFNULL(?, '')) WHERE id = ?",
+      [outcome, outcome_notes, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
