@@ -322,3 +322,79 @@ app.post("/api/scans/full", async (req, res) => {
     res.json({ scan_id, case_id });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── PDF REPORT ───────────────────────────────────────────────
+const PDFDocument = require("pdfkit");
+
+app.get("/api/cases/:id/report", async (req, res) => {
+  try {
+    const [[c]] = await db.query("SELECT * FROM cases WHERE id = ?", [req.params.id]);
+    if (!c) return res.status(404).json({ error: "Case not found" });
+
+    const [scans] = await db.query("SELECT * FROM scans WHERE case_id = ? ORDER BY created_at DESC", [req.params.id]);
+
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="ChemoSense-Case-${c.id}.pdf"`);
+    doc.pipe(res);
+
+    // Header
+    doc.rect(0, 0, 595, 80).fill("#0d9488");
+    doc.fill("white").fontSize(20).font("Helvetica-Bold").text("ChemoSense", 50, 25);
+    doc.fontSize(9).font("Helvetica").text("Selective Chemosensors for Pathogen Detection", 50, 50);
+    doc.fontSize(9).text(`Generated: ${new Date().toLocaleString()}`, 350, 50, { align: "right", width: 195 });
+
+    // Case info
+    doc.fill("#111").fontSize(16).font("Helvetica-Bold").text(`Case Report #${c.id}`, 50, 100);
+    doc.fontSize(10).font("Helvetica").fill("#555").text(c.title, 50, 122);
+
+    doc.moveTo(50, 140).lineTo(545, 140).strokeColor("#e2e8f0").stroke();
+
+    const field = (label: string, value: string, x: number, y: number) => {
+      doc.fontSize(8).fill("#888").font("Helvetica").text(label.toUpperCase(), x, y);
+      doc.fontSize(10).fill("#111").font("Helvetica-Bold").text(value || "—", x, y + 12);
+    };
+
+    field("Patient ID", c.patient_id, 50, 155);
+    field("Status", c.status?.toUpperCase(), 200, 155);
+    field("Created", new Date(c.created_at).toLocaleDateString(), 350, 155);
+
+    // Scans
+    doc.fontSize(13).font("Helvetica-Bold").fill("#0d9488").text("Scan Results", 50, 210);
+    doc.moveTo(50, 228).lineTo(545, 228).strokeColor("#0d9488").lineWidth(1.5).stroke();
+
+    let y = 240;
+    if (scans.length === 0) {
+      doc.fontSize(10).fill("#888").font("Helvetica").text("No scans linked to this case.", 50, y);
+    } else {
+      scans.forEach((s: any, i: number) => {
+        if (y > 700) { doc.addPage(); y = 50; }
+        doc.rect(50, y, 495, 90).fill(i % 2 === 0 ? "#f8fafc" : "#fff").stroke("#e2e8f0");
+        doc.fontSize(11).font("Helvetica-Bold").fill("#111").text(s.pathogen_name || "Unknown Pathogen", 60, y + 10);
+        const riskColor = s.risk_level === "Critical" ? "#ef4444" : s.risk_level === "High" ? "#f59e0b" : "#10b981";
+        doc.fontSize(8).fill(riskColor).font("Helvetica-Bold").text(s.risk_level || "—", 450, y + 12);
+        doc.fontSize(9).fill("#555").font("Helvetica");
+        doc.text(`Biomarker: ${s.biomarker_name || "—"}`, 60, y + 28);
+        doc.text(`Scanned by: ${s.scanned_by || "—"}`, 60, y + 42);
+        doc.text(`Date: ${new Date(s.created_at).toLocaleString()}`, 60, y + 56);
+        doc.text(`Notes: ${s.notes || "—"}`, 60, y + 70);
+        y += 100;
+      });
+    }
+
+    // Notes
+    if (c.notes) {
+      if (y > 650) { doc.addPage(); y = 50; }
+      doc.fontSize(13).font("Helvetica-Bold").fill("#0d9488").text("Clinical Notes", 50, y + 10);
+      doc.moveTo(50, y + 28).lineTo(545, y + 28).strokeColor("#0d9488").lineWidth(1.5).stroke();
+      doc.fontSize(10).fill("#333").font("Helvetica").text(c.notes, 50, y + 38, { width: 495 });
+      y += 60;
+    }
+
+    // Footer
+    doc.fontSize(8).fill("#888").font("Helvetica")
+      .text("⚠ This report is for clinical decision support only. Confirm by culture and sensitivity testing.", 50, 780, { width: 495, align: "center" });
+
+    doc.end();
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
