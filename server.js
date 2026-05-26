@@ -492,3 +492,17 @@ app.patch("/api/cases/:id/outcome", async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── CHANGE PASSWORD ──────────────────────────────────────────
+app.post("/api/change-password", async (req, res) => {
+  const { student_id, old_password, new_password } = req.body;
+  try {
+    const [rows] = await db.query("SELECT * FROM users WHERE student_id = ?", [student_id]);
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    if (!await bcrypt.compare(old_password, rows[0].password))
+      return res.status(401).json({ error: "Current password is incorrect" });
+    await db.query("UPDATE users SET password = ? WHERE student_id = ?",
+      [await bcrypt.hash(new_password, 10), student_id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
