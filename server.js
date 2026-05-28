@@ -506,3 +506,30 @@ app.post("/api/change-password", async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── SENSOR UPDATE & DELETE ───────────────────────────────────
+app.patch("/api/sensors/:id", async (req, res) => {
+  const { name, type, status, location, description, lod_threshold, qs_threshold, target_biomarker } = req.body;
+  try {
+    await db.query(
+      "UPDATE sensors SET name=COALESCE(?,name), type=COALESCE(?,type), status=COALESCE(?,status), location=COALESCE(?,location), description=COALESCE(?,description), lod_threshold=COALESCE(?,lod_threshold), qs_threshold=COALESCE(?,qs_threshold), target_biomarker=COALESCE(?,target_biomarker) WHERE id=?",
+      [name, type, status, location, description, lod_threshold, qs_threshold, target_biomarker, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete("/api/cases/:id", async (req, res) => {
+  try {
+    await db.query("DELETE FROM cases WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get("/api/sensors/:id", async (req, res) => {
+  try {
+    const [[row]] = await db.query("SELECT * FROM sensors WHERE id = ?", [req.params.id]);
+    if (!row) return res.status(404).json({ error: "Sensor not found" });
+    res.json(row);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
