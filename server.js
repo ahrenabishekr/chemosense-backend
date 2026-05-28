@@ -575,8 +575,8 @@ app.get("/api/ward-heatmap", async (req, res) => {
       ORDER BY count DESC
     `);
     // Group by doctor (proxy for ward)
-    const wards: Record<string, any> = {};
-    rows.forEach((r: any) => {
+    const wards = {};
+    rows.forEach((r) => {
       const ward = r.scanned_by || "Unknown";
       if (!wards[ward]) wards[ward] = { ward, pathogens: [], total: 0, critical: 0 };
       wards[ward].pathogens.push({ name: r.pathogen_name, count: r.count, risk: r.risk_level, last_seen: r.last_seen });
