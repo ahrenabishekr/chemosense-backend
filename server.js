@@ -533,3 +533,91 @@ app.get("/api/sensors/:id", async (req, res) => {
     res.json(row);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── OUTBREAK DETECTION ───────────────────────────────────────
+app.get("/api/outbreaks", async (req, res) => {
+  try {
+    // Find pathogens detected 3+ times in last 48 hours
+    const [rows] = await db.query(`
+      SELECT 
+        pathogen_name,
+        COUNT(*) as case_count,
+        GROUP_CONCAT(DISTINCT patient_id) as patients,
+        GROUP_CONCAT(DISTINCT scanned_by) as doctors,
+        MAX(created_at) as last_seen,
+        MIN(created_at) as first_seen
+      FROM scans
+      WHERE created_at >= NOW() - INTERVAL 48 HOUR
+        AND pathogen_name IS NOT NULL
+        AND result = 'positive'
+      GROUP BY pathogen_name
+      HAVING COUNT(*) >= 3
+      ORDER BY case_count DESC
+    `);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── WARD INFECTION HEATMAP (real scan data) ──────────────────
+app.get("/api/ward-heatmap", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        pathogen_name,
+        risk_level,
+        scanned_by,
+        COUNT(*) as count,
+        MAX(created_at) as last_seen
+      FROM scans
+      WHERE result = 'positive'
+        AND pathogen_name IS NOT NULL
+      GROUP BY pathogen_name, risk_level, scanned_by
+      ORDER BY count DESC
+    `);
+    // Group by doctor (proxy for ward)
+    const wards: Record<string, any> = {};
+    rows.forEach((r: any) => {
+      const ward = r.scanned_by || "Unknown";
+      if (!wards[ward]) wards[ward] = { ward, pathogens: [], total: 0, critical: 0 };
+      wards[ward].pathogens.push({ name: r.pathogen_name, count: r.count, risk: r.risk_level, last_seen: r.last_seen });
+      wards[ward].total += r.count;
+      if (r.risk_level === "Critical") wards[ward].critical += r.count;
+    });
+    res.json(Object.values(wards));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── LIVE SENSOR STREAM ───────────────────────────────────────
+app.get("/api/sensors/:id/live", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.flushHeaders();
+
+  const sendReading = async () => {
+    try {
+      const [[sensor]] = await db.query("SELECT * FROM sensors WHERE id = ?", [req.params.id]);
+      if (!sensor) { res.end(); return; }
+      // Simulate realistic reading with drift around last_reading
+      const base = parseFloat(sensor.last_reading) || 5;
+      const noise = (Math.random() - 0.4) * 8;
+      const reading = Math.max(0, +(base + noise).toFixed(2));
+      const lod_crossed = reading >= sensor.lod_threshold ? 1 : 0;
+      const qs_activated = reading >= sensor.qs_threshold ? 1 : 0;
+      const signal_strength = Math.min(100, Math.round((reading / sensor.qs_threshold) * 100));
+
+      // Save to DB
+      await db.query(
+        "INSERT INTO sensor_readings (sensor_id, reading, unit, signal_strength, qs_activated, lod_crossed) VALUES (?, ?, ?, ?, ?, ?)",
+        [req.params.id, reading, sensor.reading_unit || "nM", signal_strength, qs_activated, lod_crossed]
+      );
+      await db.query("UPDATE sensors SET last_reading = ? WHERE id = ?", [reading, req.params.id]);
+
+      res.write(`data: ${JSON.stringify({ reading, lod_crossed, qs_activated, signal_strength, timestamp: new Date().toISOString() })}\n\n`);
+    } catch {}
+  };
+
+  const interval = setInterval(sendReading, 2000);
+  req.on("close", () => clearInterval(interval));
+});
