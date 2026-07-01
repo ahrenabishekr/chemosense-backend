@@ -28,10 +28,22 @@ app.get("/", (req, res) => {
 });
 
 // ── SCAN ENGINE ─────────────────────────────────────────────
-app.post("/api/scan/symptoms", (req, res) => {
+app.post("/api/scan/symptoms", async (req, res) => {
   const { text } = req.body;
-  if (!text) return res.status(400).json({ error: "text is required" });
-  res.json(matchSymptoms(text));
+  const missing = text === undefined || text === null || text.trim().length === 0;
+  if (missing) return res.status(400).json({ error: "text is required" });
+  try {
+    const { matchSymptomsAI } = require("./ai-match.js");
+    const aiResult = await matchSymptomsAI(text);
+    if (aiResult.noMatch) {
+      return res.json({ results: [], aiPowered: true, note: aiResult.note });
+    }
+    return res.json({ results: aiResult.results, aiPowered: true });
+  } catch (err) {
+    console.error("AI match failed, falling back to keyword matcher:", err.message);
+    const fallback = matchSymptoms(text);
+    return res.json({ results: fallback, aiPowered: false, note: "AI matching temporarily unavailable, used backup matcher." });
+  }
 });
 
 app.post("/api/scan/biomarker", (req, res) => {
