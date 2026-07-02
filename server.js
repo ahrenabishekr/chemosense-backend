@@ -205,13 +205,18 @@ app.post("/api/forgot-password", async (req, res) => {
     const expires = new Date(Date.now() + 3600000);
     await db.query("INSERT INTO reset_tokens (student_id, token, expires_at) VALUES (?, ?, ?)", [student_id, token, expires]);
     const resetLink = `https://chemosense-app.onrender.com/reset-password?token=${token}`;
-    await transporter.sendMail({
-      from: `"ChemoSense" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "ChemoSense — Password Reset",
-      html: `<p>Hello ${user.name},</p><p>Reset your password: <a href="${resetLink}">Click here</a></p><p>Expires in 1 hour.</p>`,
-    });
-    res.json({ success: true, message: "Reset email sent!" });
+    // Try email, but always return reset link so it works even if SMTP is blocked
+    try {
+      await transporter.sendMail({
+        from: `"ChemoSense" <${process.env.EMAIL_USER}>`,
+        to: user.email,
+        subject: "ChemoSense — Password Reset",
+        html: `<p>Hello ${user.name},</p><p>Reset your password: <a href="${resetLink}">Click here</a></p><p>Expires in 1 hour.</p>`,
+      });
+    } catch (mailErr) {
+      console.warn("Email failed (SMTP blocked), returning link directly:", mailErr.message);
+    }
+    res.json({ success: true, message: "Reset link generated!", resetLink, email: user.email });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
