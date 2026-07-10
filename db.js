@@ -9,7 +9,17 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   ssl: { rejectUnauthorized: false },
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 5,
+  queueLimit: 0,
+  connectTimeout: 20000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
+});
+
+pool.on("connection", (conn) => {
+  conn.on("error", (err) => {
+    console.error("MySQL connection error:", err.code);
+  });
 });
 
 module.exports = pool;
