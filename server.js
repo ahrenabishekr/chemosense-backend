@@ -5,6 +5,32 @@ const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 require("dotenv").config();
 const db = require("./db");
+
+// ─── AUTH MIDDLEWARE ──────────────────────────────────────
+async function requireAuth(req, res, next) {
+  const student_id = req.body?.student_id || req.query?.student_id || req.headers["x-student-id"];
+  if (!student_id) return res.status(401).json({ error: "Not logged in" });
+
+  const [rows] = await db.query(
+    "SELECT id, name, role, student_id FROM users WHERE student_id = ?",
+    [student_id]
+  );
+  if (!rows.length) return res.status(401).json({ error: "Invalid session" });
+
+  req.user = rows[0];
+  next();
+}
+
+function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Not logged in" });
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: "Not permitted for your role" });
+    }
+    next();
+  };
+}
+
 const { matchSymptoms, matchByBiomarker, allBiomarkers, pathogens } = require("./scan-engine");
 
 const app = express();
@@ -76,7 +102,7 @@ app.get("/api/sensors", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post("/api/sensors", async (req, res) => {
+app.post("/api/sensors", requireAuth, requireRole("technician", "doctor", "admin"), async (req, res) => {
   const { name, type, status, location, description } = req.body;
   try {
     const [r] = await db.query(
@@ -135,7 +161,7 @@ app.get("/api/cases", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post("/api/cases", async (req, res) => {
+app.post("/api/cases", requireAuth, requireRole("technician", "doctor", "admin"), async (req, res) => {
   const { title, patient_name, patient_id, status, notes } = req.body;
   try {
     const [r] = await db.query(
@@ -146,7 +172,7 @@ app.post("/api/cases", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put("/api/cases/:id", async (req, res) => {
+app.put("/api/cases/:id", requireAuth, requireRole("doctor", "admin"), async (req, res) => {
   const { title, patient_name, status, notes } = req.body;
   try {
     await db.query(
@@ -232,7 +258,7 @@ app.post("/api/reset-password", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post("/api/email-report", async (req, res) => {
+app.post("/api/email-report", requireAuth, requireRole("doctor", "admin"), async (req, res) => {
   const { to, caseId, doctor, pathogen, riskLevel, biomarker, sensor, treatment, createdAt } = req.body;
   try {
     await transporter.sendMail({
@@ -417,7 +443,7 @@ app.get("/api/cases/:id/report", async (req, res) => {
 });
 
 // ── SENSOR READINGS & QS ALERTS ─────────────────────────────
-app.post("/api/sensors/:id/reading", async (req, res) => {
+app.post("/api/sensors/:id/reading", requireAuth, requireRole("technician", "doctor", "admin"), async (req, res) => {
   const { reading, unit } = req.body;
   try {
     const [[sensor]] = await db.query("SELECT * FROM sensors WHERE id = ?", [req.params.id]);
@@ -499,7 +525,7 @@ app.get("/api/patients/:patient_id/timeline", async (req, res) => {
 });
 
 // ── TREATMENT OUTCOMES ───────────────────────────────────────
-app.patch("/api/cases/:id/outcome", async (req, res) => {
+app.patch("/api/cases/:id/outcome", requireAuth, requireRole("doctor", "admin"), async (req, res) => {
   const { outcome, outcome_notes } = req.body;
   try {
     await db.query(
@@ -536,7 +562,7 @@ app.patch("/api/sensors/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete("/api/cases/:id", async (req, res) => {
+app.delete("/api/cases/:id", requireAuth, requireRole("doctor", "admin"), async (req, res) => {
   try {
     await db.query("DELETE FROM cases WHERE id = ?", [req.params.id]);
     res.json({ success: true });
