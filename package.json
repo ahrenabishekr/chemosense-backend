@@ -18,6 +18,14 @@
     "express": "^5.2.1",
     "mysql2": "^3.22.3",
     "nodemailer": "^8.0.7",
-    "pdfkit": "^0.18.0"
+    "pdfkit": "^0.18.0",
+    "resend": "^6.17.2"
+  },
+  "devDependencies": {
+    "@wdio/cli": "^9.29.1",
+    "@wdio/local-runner": "^9.29.1",
+    "@wdio/mocha-framework": "^9.29.1",
+    "@wdio/spec-reporter": "^9.29.1",
+    "webdriverio": "^9.29.1"
   }
 }

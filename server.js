@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 const express = require("express");
 const cors = require("cors");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const crypto = require("crypto");
 require("dotenv").config();
 const db = require("./db");
@@ -37,13 +37,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  family: 4, // force IPv4 — Render's network doesn't support outbound IPv6, causing ENETUNREACH
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ── HEALTH CHECK ────────────────────────────────────────────
 app.get("/health", (req, res) => {
@@ -265,8 +259,8 @@ app.post("/api/reset-password", async (req, res) => {
 app.post("/api/email-report", requireAuth, requireRole("doctor", "admin"), async (req, res) => {
   const { to, caseId, doctor, pathogen, riskLevel, biomarker, sensor, treatment, createdAt } = req.body;
   try {
-    await transporter.sendMail({
-      from: `"ChemoSense" <${process.env.EMAIL_USER}>`,
+    await resend.emails.send({
+      from: "ChemoSense <onboarding@resend.dev>",
       to: to,
       subject: `ChemoSense Report — ${caseId} — ${pathogen}`,
       html: `
