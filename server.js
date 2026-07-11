@@ -211,11 +211,14 @@ app.post("/api/login", async (req, res) => {
 });
 
 app.post("/api/register", async (req, res) => {
-  const { email, password, name, role, student_id } = req.body;
+  const { email, password, name, student_id } = req.body;
+  const ALLOWED_ROLES = ["admin", "doctor", "technician"];
+  let role = String(req.body.role || "doctor").toLowerCase().trim();
+  if (!ALLOWED_ROLES.includes(role)) role = "doctor";
   try {
     const [r] = await db.query(
       "INSERT INTO users (name, email, password, role, student_id) VALUES (?, ?, ?, ?, ?)",
-      [name, email, await bcrypt.hash(password, 10), role || "doctor", student_id]
+      [name, email, await bcrypt.hash(password, 10), role, student_id]
     );
     res.json({ id: r.insertId, name, email, role, student_id });
   } catch (err) { res.status(500).json({ error: err.message }); }
