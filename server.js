@@ -467,6 +467,25 @@ app.post("/api/sensors/:id/reading", requireAuth, requireRole("technician", "doc
 
     await db.query("UPDATE sensors SET last_reading = ? WHERE id = ?", [reading, req.params.id]);
 
+    // AI-powered clinical interpretation: match this reading against known pathogen biomarker profiles
+    let pathogenMatch = null;
+    if (sensor.target_biomarker && (qs_activated || lod_crossed)) {
+      const matches = matchByBiomarker(sensor.target_biomarker);
+      if (matches.length > 0) {
+        const top = matches[0];
+        pathogenMatch = {
+          pathogenId: top.pathogen.id,
+          pathogenName: top.pathogen.name,
+          riskLevel: top.pathogen.riskLevel,
+          biomarker: sensor.target_biomarker,
+          confidence: qs_activated ? "High" : "Moderate",
+          reasoning: qs_activated
+            ? `${sensor.target_biomarker} at ${reading} ${unit || sensor.reading_unit} exceeds the quorum sensing threshold — consistent with active ${top.pathogen.name} colonization.`
+            : `${sensor.target_biomarker} detected above the limit of detection — early sign of possible ${top.pathogen.name} presence.`,
+        };
+      }
+    }
+
     if (qs_activated) {
       await db.query(
         "INSERT INTO alerts (type, title, message, patient_id, scan_id) VALUES (?, ?, ?, ?, ?)",
@@ -483,7 +502,7 @@ app.post("/api/sensors/:id/reading", requireAuth, requireRole("technician", "doc
       );
     }
 
-    res.json({ lod_crossed, qs_activated, signal_strength, reading });
+    res.json({ lod_crossed, qs_activated, signal_strength, reading, pathogenMatch });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -497,13 +516,16 @@ app.get("/api/sensors/:id/readings", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.patch("/api/sensors/:id/calibrate", async (req, res) => {
+app.patch("/api/sensors/:id/calibrate", requireAuth, requireRole("technician", "doctor", "admin"), async (req, res) => {
   try {
+    const [[sensor]] = await db.query("SELECT calibration_drift FROM sensors WHERE id = ?", [req.params.id]);
+    const drift_before = sensor ? Number(sensor.calibration_drift) : 0;
+
     await db.query(
       "UPDATE sensors SET last_calibrated = NOW(), calibration_drift = 0.00 WHERE id = ?",
       [req.params.id]
     );
-    res.json({ success: true, calibrated_at: new Date() });
+    res.json({ success: true, calibrated_at: new Date(), drift_before, drift_after: 0 });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
