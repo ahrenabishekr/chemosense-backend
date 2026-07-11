@@ -3,22 +3,21 @@ const express = require("express");
 const cors = require("cors");
 const { Resend } = require("resend");
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const db = require("./db");
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────
-async function requireAuth(req, res, next) {
-  const student_id = req.body?.student_id || req.query?.student_id || req.headers["x-student-id"];
-  if (!student_id) return res.status(401).json({ error: "Not logged in" });
-
-  const [rows] = await db.query(
-    "SELECT id, name, role, student_id FROM users WHERE student_id = ?",
-    [student_id]
-  );
-  if (!rows.length) return res.status(401).json({ error: "Invalid session" });
-
-  req.user = rows[0];
-  next();
+function requireAuth(req, res, next) {
+  const authHeader = req.headers["authorization"] || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Not logged in" });
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired session" });
+  }
 }
 
 function requireRole(...allowedRoles) {
@@ -201,7 +200,12 @@ app.post("/api/login", async (req, res) => {
     if (!rows.length) return res.status(401).json({ error: "Invalid Student ID or password" });
     if (!await bcrypt.compare(password, rows[0].password)) return res.status(401).json({ error: "Invalid password" });
     const { password: _, ...user } = rows[0];
-    res.json(user);
+    const token = jwt.sign(
+      { id: user.id, student_id: user.student_id, role: user.role, name: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({ ...user, token });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -327,7 +331,7 @@ app.patch("/api/alerts/read-all", async (req, res) => {
 
 // ── SCAN → CASE AUTO-LINK ───────────────────────────────────
 app.post("/api/scans/full", async (req, res) => {
-  const { sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level } = req.body;
+  const { sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level, is_practice } = req.body;
   try {
     // 1. Save the scan
     const [scanResult] = await db.query(
@@ -335,6 +339,11 @@ app.post("/api/scans/full", async (req, res) => {
       [sensor_id, patient_id, result || "positive", value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level]
     );
     const scan_id = scanResult.insertId;
+
+    // Practice scans (student role): save the scan for history, but skip creating a real case or alert
+    if (is_practice) {
+      return res.json({ scan_id, case_id: null, practice: true });
+    }
 
     // 2. Auto-create a linked case
     const caseTitle = `${pathogen_name || "Unknown"} — ${patient_id}`;
