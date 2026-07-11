@@ -22,4 +22,27 @@ pool.on("connection", (conn) => {
   });
 });
 
+// Railway/Render can silently close an idle pooled connection. The next
+// query then throws "Connection lost". Retry once with a fresh connection.
+const originalQuery = pool.query.bind(pool);
+pool.query = async (...args) => {
+  try {
+    return await originalQuery(...args);
+  } catch (err) {
+    const retryable =
+      err.code === "PROTOCOL_CONNECTION_LOST" ||
+      err.code === "ECONNRESET" ||
+      err.code === "ETIMEDOUT" ||
+      /connection lost/i.test(err.message || "");
+    if (!retryable) throw err;
+    console.warn("DB connection was stale, retrying query once:", err.code || err.message);
+    return await originalQuery(...args);
+  }
+};
+
+// Keep the MySQL session alive at the protocol level, not just TCP.
+setInterval(() => {
+  pool.query("SELECT 1").catch((e) => console.warn("Keep-alive ping failed:", e.message));
+}, 4 * 60 * 1000);
+
 module.exports = pool;
