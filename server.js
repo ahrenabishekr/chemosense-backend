@@ -42,6 +42,7 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  family: 4, // force IPv4 — Render's network doesn't support outbound IPv6, causing ENETUNREACH
 });
 
 // ── HEALTH CHECK ────────────────────────────────────────────
