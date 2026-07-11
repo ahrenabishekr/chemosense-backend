@@ -207,7 +207,7 @@ app.post("/api/login", async (req, res) => {
 
 app.post("/api/register", async (req, res) => {
   const { email, password, name, student_id } = req.body;
-  const ALLOWED_ROLES = ["admin", "doctor", "technician"];
+  const ALLOWED_ROLES = ["admin", "doctor", "technician", "student"];
   let role = String(req.body.role || "doctor").toLowerCase().trim();
   if (!ALLOWED_ROLES.includes(role)) role = "doctor";
   try {
