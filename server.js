@@ -699,3 +699,32 @@ app.get("/api/sensors/:id/live", async (req, res) => {
   const interval = setInterval(sendReading, 2000);
   req.on("close", () => clearInterval(interval));
 });
+
+
+const { compareWithAI, askAboutPathogen } = require("./ai-match.js");
+
+app.post("/api/compare", requireAuth, async (req, res) => {
+  try {
+    const { pathogenAId, pathogenBId } = req.body;
+    if (!pathogenAId || !pathogenBId) {
+      return res.status(400).json({ error: "pathogenAId and pathogenBId are required" });
+    }
+    const result = await compareWithAI(pathogenAId, pathogenBId);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/pathogens/:id/ask", requireAuth, async (req, res) => {
+  try {
+    const { question } = req.body;
+    if (!question || !question.trim()) {
+      return res.status(400).json({ error: "question is required" });
+    }
+    const result = await askAboutPathogen(req.params.id, question.trim());
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
