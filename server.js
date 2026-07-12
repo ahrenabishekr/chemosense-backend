@@ -219,7 +219,12 @@ app.post("/api/register", async (req, res) => {
       "INSERT INTO users (name, email, password, role, student_id) VALUES (?, ?, ?, ?, ?)",
       [name, email, await bcrypt.hash(password, 10), role, student_id]
     );
-    res.json({ id: r.insertId, name, email, role, student_id });
+    const token = jwt.sign(
+      { id: r.insertId, student_id, role, name },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({ id: r.insertId, name, email, role, student_id, token });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
