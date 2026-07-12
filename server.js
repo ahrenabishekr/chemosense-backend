@@ -81,7 +81,7 @@ app.get("/api/pathogens", (req, res) => {
 });
 
 // ── USERS ───────────────────────────────────────────────────
-app.get("/api/users", async (req, res) => {
+app.get("/api/users", requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT id, name, email, role, student_id, created_at FROM users");
     res.json(rows);
@@ -108,14 +108,14 @@ app.post("/api/sensors", requireAuth, requireRole("technician", "doctor", "admin
 });
 
 // ── SCANS ───────────────────────────────────────────────────
-app.get("/api/scans", async (req, res) => {
+app.get("/api/scans", requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM scans ORDER BY created_at DESC");
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post("/api/scans", async (req, res) => {
+app.post("/api/scans", requireAuth, async (req, res) => {
   const { sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level } = req.body;
   try {
     const [r] = await db.query(
@@ -148,7 +148,7 @@ app.post("/api/scans", async (req, res) => {
 });
 
 // ── CASES ───────────────────────────────────────────────────
-app.get("/api/cases", async (req, res) => {
+app.get("/api/cases", requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM cases ORDER BY created_at DESC");
     res.json(rows);
@@ -178,7 +178,7 @@ app.put("/api/cases/:id", requireAuth, requireRole("doctor", "admin"), async (re
 });
 
 // ── DASHBOARD ───────────────────────────────────────────────
-app.get("/api/dashboard", async (req, res) => {
+app.get("/api/dashboard", requireAuth, async (req, res) => {
   try {
     const [[{ total_scans }]] = await db.query("SELECT COUNT(*) as total_scans FROM scans");
     const [[{ total_cases }]] = await db.query("SELECT COUNT(*) as total_cases FROM cases");
@@ -308,7 +308,7 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`✅ BioScan backend running on http://localhost:${PORT}`));
 
 // ── ALERTS ──────────────────────────────────────────────────
-app.get("/api/alerts", async (req, res) => {
+app.get("/api/alerts", requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM alerts ORDER BY created_at DESC LIMIT 50");
     res.json(rows);
@@ -330,7 +330,7 @@ app.patch("/api/alerts/read-all", async (req, res) => {
 });
 
 // ── SCAN → CASE AUTO-LINK ───────────────────────────────────
-app.post("/api/scans/full", async (req, res) => {
+app.post("/api/scans/full", requireAuth, async (req, res) => {
   const { sensor_id, patient_id, result, value, unit, notes, scanned_by, pathogen_name, biomarker_name, risk_level, is_practice } = req.body;
   try {
     // 1. Save the scan
@@ -376,7 +376,7 @@ app.post("/api/scans/full", async (req, res) => {
 // ── PDF REPORT ───────────────────────────────────────────────
 const PDFDocument = require("pdfkit");
 
-app.get("/api/cases/:id/report", async (req, res) => {
+app.get("/api/cases/:id/report", requireAuth, async (req, res) => {
   try {
     const [[c]] = await db.query("SELECT * FROM cases WHERE id = ?", [req.params.id]);
     if (!c) return res.status(404).json({ error: "Case not found" });
@@ -530,7 +530,7 @@ app.patch("/api/sensors/:id/calibrate", requireAuth, requireRole("technician", "
 });
 
 // ── PATIENT TIMELINE ─────────────────────────────────────────
-app.get("/api/patients", async (req, res) => {
+app.get("/api/patients", requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
       "SELECT patient_id, MAX(created_at) as last_scan, COUNT(*) as scan_count, MAX(risk_level) as max_risk FROM scans GROUP BY patient_id ORDER BY last_scan DESC"
@@ -539,7 +539,7 @@ app.get("/api/patients", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get("/api/patients/:patient_id/timeline", async (req, res) => {
+app.get("/api/patients/:patient_id/timeline", requireAuth, async (req, res) => {
   try {
     const [scans] = await db.query(
       "SELECT * FROM scans WHERE patient_id = ? ORDER BY created_at ASC",
@@ -566,8 +566,9 @@ app.patch("/api/cases/:id/outcome", requireAuth, requireRole("doctor", "admin"),
 });
 
 // ── CHANGE PASSWORD ──────────────────────────────────────────
-app.post("/api/change-password", async (req, res) => {
-  const { student_id, old_password, new_password } = req.body;
+app.post("/api/change-password", requireAuth, async (req, res) => {
+  const { old_password, new_password } = req.body;
+  const student_id = req.user.student_id; // identity comes from the verified JWT, not the request body
   try {
     const [rows] = await db.query("SELECT * FROM users WHERE student_id = ?", [student_id]);
     if (!rows.length) return res.status(404).json({ error: "User not found" });
@@ -580,7 +581,7 @@ app.post("/api/change-password", async (req, res) => {
 });
 
 // ── SENSOR UPDATE & DELETE ───────────────────────────────────
-app.patch("/api/sensors/:id", async (req, res) => {
+app.patch("/api/sensors/:id", requireAuth, async (req, res) => {
   const { name, type, status, location, description, lod_threshold, qs_threshold, target_biomarker } = req.body;
   try {
     await db.query(
