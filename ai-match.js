@@ -95,10 +95,8 @@ Clinical presentation: ${text}`;
 
 
 // --- Compare two pathogens with AI ---
-async function compareWithAI(pathogenAId, pathogenBId) {
-  const A = pathogens.find((p) => p.id === pathogenAId);
-  const B = pathogens.find((p) => p.id === pathogenBId);
-  if (!A || !B) throw new Error("Invalid pathogen id");
+async function compareWithAI(A, B) {
+  if (!A || !B || !A.name || !B.name) throw new Error("Invalid pathogen data");
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -163,9 +161,8 @@ function buildFallbackComparison(A, B) {
 }
 
 // --- Ask AI a free-text question about a specific pathogen ---
-async function askAboutPathogen(pathogenId, question) {
-  const p = pathogens.find((x) => x.id === pathogenId);
-  if (!p) throw new Error("Pathogen not found");
+async function askAboutPathogen(p, question) {
+  if (!p || !p.name) throw new Error("Invalid pathogen data");
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {

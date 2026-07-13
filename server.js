@@ -705,11 +705,11 @@ const { compareWithAI, askAboutPathogen } = require("./ai-match.js");
 
 app.post("/api/compare", requireAuth, async (req, res) => {
   try {
-    const { pathogenAId, pathogenBId } = req.body;
-    if (!pathogenAId || !pathogenBId) {
-      return res.status(400).json({ error: "pathogenAId and pathogenBId are required" });
+    const { pathogenA, pathogenB } = req.body;
+    if (!pathogenA || !pathogenB) {
+      return res.status(400).json({ error: "pathogenA and pathogenB are required" });
     }
-    const result = await compareWithAI(pathogenAId, pathogenBId);
+    const result = await compareWithAI(pathogenA, pathogenB);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -718,11 +718,14 @@ app.post("/api/compare", requireAuth, async (req, res) => {
 
 app.post("/api/pathogens/:id/ask", requireAuth, async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, pathogen } = req.body;
     if (!question || !question.trim()) {
       return res.status(400).json({ error: "question is required" });
     }
-    const result = await askAboutPathogen(req.params.id, question.trim());
+    if (!pathogen) {
+      return res.status(400).json({ error: "pathogen data is required" });
+    }
+    const result = await askAboutPathogen(pathogen, question.trim());
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
