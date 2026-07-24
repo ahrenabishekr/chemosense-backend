@@ -211,6 +211,9 @@ app.post("/api/login", async (req, res) => {
 
 app.post("/api/register", async (req, res) => {
   const { email, password, name, student_id } = req.body;
+  if (!email || !password || !student_id) {
+    return res.status(400).json({ error: "email, password, and student_id are required" });
+  }
   const ALLOWED_ROLES = ["admin", "doctor", "technician", "student"];
   let role = String(req.body.role || "doctor").toLowerCase().trim();
   if (!ALLOWED_ROLES.includes(role)) role = "doctor";
@@ -225,7 +228,13 @@ app.post("/api/register", async (req, res) => {
       { expiresIn: "7d" }
     );
     res.json({ id: r.insertId, name, email, role, student_id, token });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "An account with that Student ID or email already exists" });
+    }
+    console.error("Register error:", err.message);
+    res.status(500).json({ error: "Registration failed" });
+  }
 });
 
 app.post("/api/forgot-password", async (req, res) => {
