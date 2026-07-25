@@ -276,6 +276,10 @@ app.post("/api/reset-password", async (req, res) => {
 
 app.post("/api/email-report", requireAuth, requireRole("doctor", "admin"), async (req, res) => {
   const { to, caseId, doctor, pathogen, riskLevel, biomarker, sensor, treatment, createdAt } = req.body;
+  if (!to) {
+    return res.status(400).json({ error: "Recipient email ('to') is required" });
+  }
+  const safeTreatment = Array.isArray(treatment) ? treatment : [];
   try {
     await resend.emails.send({
       from: "ChemoSense <onboarding@resend.dev>",
@@ -300,7 +304,7 @@ app.post("/api/email-report", requireAuth, requireRole("doctor", "admin"), async
             <p><strong>Sensor:</strong> ${sensor}</p>
             <h2 style="color: #0d9488;">Treatment</h2>
             <ul>
-              ${treatment.map((t) => `<li>${t}</li>`).join("")}
+              ${safeTreatment.length ? safeTreatment.map((t) => `<li>${t}</li>`).join("") : "<li>No specific treatment data provided</li>"}
             </ul>
             <p style="background: #fef3c7; padding: 10px; border-radius: 4px; font-size: 12px;">
               ⚠️ Confirm by culture and sensitivity. Not a substitute for laboratory confirmation.
