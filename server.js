@@ -86,9 +86,38 @@ app.post("/api/scan/symptoms", async (req, res) => {
 });
 
 app.post("/api/scan/biomarker", (req, res) => {
-  const { biomarker } = req.body;
+  const { biomarker, reading } = req.body;
   if (!biomarker) return res.status(400).json({ error: "biomarker is required" });
-  res.json(matchByBiomarker(biomarker));
+
+  // If a concentration reading is provided, use the statistical Gaussian
+  // model (trained on our own curated biomarker LOD dataset) for real
+  // confidence scoring. Otherwise fall back to a plain name match.
+  if (reading !== undefined && reading !== null && reading !== "") {
+    const numReading = Number(reading);
+    if (Number.isNaN(numReading)) {
+      return res.status(400).json({ error: "reading must be a number" });
+    }
+    const scored = matchByBiomarkerReading(biomarker, numReading);
+    const results = scored.map(s => ({
+      pathogen: s.pathogen,
+      score: Math.round(s.confidence * 100),
+      matched: [biomarker],
+      topBiomarker: s.biomarker,
+      confidencePct: Math.round(s.confidence * 100),
+    }));
+    return res.json({
+      results,
+      aiPowered: true,
+      source: "biomarker-model",
+      note: results.length > 1
+        ? `${results.length} pathogens share this biomarker — statistical model (own curated LOD dataset) ranks them by concentration match.`
+        : "Statistical model (own curated LOD dataset) scored this reading.",
+    });
+  }
+
+  // No reading provided: plain exact biomarker-name lookup, no confidence scoring possible
+  const results = matchByBiomarker(biomarker);
+  res.json({ results, aiPowered: false, source: "name-lookup", note: "No concentration entered — showing all pathogens with this biomarker (no confidence ranking)." });
 });
 
 app.get("/api/scan/biomarkers", (req, res) => {
