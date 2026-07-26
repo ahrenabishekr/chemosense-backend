@@ -115,6 +115,34 @@ const pathogens = [
     summary: "Major cause of device-related infections.",
     empiricalTreatment: ["Vancomycin for MRSE", "Rifampicin combination for biofilm"],
   },
+  {
+    id: "mtb",
+    name: "Mycobacterium tuberculosis",
+    shortName: "M. tuberculosis",
+    gram: "Gram-positive",
+    riskLevel: "Critical",
+    infectionSites: ["Lungs (pulmonary TB)", "Lymph nodes", "Bone (Pott)", "CNS (meningitis)"],
+    biomarkers: [
+      { name: "Tuberculostearic acid (TBSA)", type: "Volatile", recommendedSensor: "mip-capacitive", lod: "50 ng/mL", detectionTime: "20 min", mechanism: "MIP-electrode array detects 10-methyloctadecanoic acid in breath condensate.", clinicalMeaning: "Highly specific for mycobacterial cell wall — bypasses sputum collection." },
+      { name: "LAM (lipoarabinomannan)", type: "Toxin", recommendedSensor: "aunp-lateral", lod: "1 ng/mL", detectionTime: "25 min", mechanism: "AuNP lateral flow with anti-LAM mAb; visible band in urine.", clinicalMeaning: "Urine LAM positive → active TB, esp. in HIV co-infection." },
+    ],
+    summary: "Slow-growing acid-fast bacillus; leading cause of infectious death globally; MDR rising.",
+    empiricalTreatment: ["RIPE: Rifampicin + Isoniazid + Pyrazinamide + Ethambutol × 2 mo", "Then RIF + INH × 4 mo", "Bedaquiline + linezolid for MDR/XDR"],
+  },
+  {
+    id: "vc",
+    name: "Vibrio cholerae",
+    shortName: "V. cholerae",
+    gram: "Gram-negative",
+    riskLevel: "High",
+    infectionSites: ["Small intestine", "Bloodstream (rare)"],
+    biomarkers: [
+      { name: "Cholera toxin (CT)", type: "Toxin", recommendedSensor: "echem-aptasensor", lod: "0.05 ng/mL", detectionTime: "8 min", mechanism: "GM1-ganglioside-functionalised electrode binds CT-B subunit; SWV current change.", clinicalMeaning: "Confirms toxigenic V. cholerae (O1/O139) — rice-water diarrhoea." },
+      { name: "CAI-1", type: "QS Molecule", recommendedSensor: "frect-qd", lod: "5 nM", detectionTime: "10 min", mechanism: "Aptamer-QD FRET; α-hydroxyketone binding.", clinicalMeaning: "Late-stage outbreak signal — predicts shedding burden." },
+    ],
+    summary: "Causes acute watery diarrhoea; outbreak pathogen in low-sanitation settings.",
+    empiricalTreatment: ["Aggressive ORS / IV Ringer's lactate", "Doxycycline 300 mg PO single dose (adults)", "Azithromycin 1 g if pregnant"],
+  },
 ];
 
 const symptomMap = [
@@ -133,6 +161,10 @@ const symptomMap = [
   { keywords: ["acinetobacter", "baumannii", "pan-resistant", "xdr"], pathogenId: "ab", weight: 4 },
   { keywords: ["vre", "enterococcus", "faecium", "vancomycin resistant"], pathogenId: "ef", weight: 4 },
   { keywords: ["prosthetic", "implant", "device", "catheter", "coagulase negative"], pathogenId: "se", weight: 3 },
+  { keywords: ["cough", "night sweats", "weight loss", "hemoptysis", "blood in sputum", "lung nodule"], pathogenId: "mtb", weight: 3 },
+  { keywords: ["tuberculosis", "tb", "mycobacterium", "acid-fast", "mantoux"], pathogenId: "mtb", weight: 4 },
+  { keywords: ["watery diarrhea", "rice water stool", "dehydration", "outbreak", "low sanitation"], pathogenId: "vc", weight: 3 },
+  { keywords: ["cholera", "vibrio", "cholerae"], pathogenId: "vc", weight: 4 },
 ];
 
 function matchSymptoms(text) {
