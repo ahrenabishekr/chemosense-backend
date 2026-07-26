@@ -58,11 +58,22 @@ app.post("/api/scan/symptoms", async (req, res) => {
     if (aiResult.noMatch) {
       return res.json({ results: [], aiPowered: true, note: aiResult.note });
     }
-    return res.json({ results: aiResult.results, aiPowered: true });
+    return res.json({ results: aiResult.results, aiPowered: true, source: "gemini" });
   } catch (err) {
-    console.error("AI match failed, falling back to keyword matcher:", err.message);
-    const fallback = matchSymptoms(text);
-    return res.json({ results: fallback, aiPowered: false, note: "AI matching temporarily unavailable, used backup matcher." });
+    console.error("Gemini AI match failed, trying local trained model:", err.message);
+    try {
+      const { matchSymptomsLocalML } = require("./ai-match.js");
+      const localResult = matchSymptomsLocalML(text);
+      if (localResult.source === "unavailable") throw new Error("local model unavailable");
+      if (localResult.noMatch) {
+        return res.json({ results: [], aiPowered: true, source: "local-ml", note: localResult.note || "No matching pathogen found by local model." });
+      }
+      return res.json({ results: localResult.results, aiPowered: true, source: "local-ml", note: "Gemini unavailable — using locally trained model (offline, no API needed)." });
+    } catch (localErr) {
+      console.error("Local ML also failed, falling back to keyword matcher:", localErr.message);
+      const fallback = matchSymptoms(text);
+      return res.json({ results: fallback, aiPowered: false, source: "keyword", note: "AI matching temporarily unavailable, used backup matcher." });
+    }
   }
 });
 

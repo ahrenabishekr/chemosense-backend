@@ -1,5 +1,65 @@
 // Real AI-powered symptom matching using Google Gemini (free tier)
 const { pathogens } = require("./scan-engine.js");
+const { SymptomClassifier, MODEL_PATH } = require("./models/symptom-classifier.js");
+
+let symptomClassifier = null;
+try {
+  symptomClassifier = new SymptomClassifier(MODEL_PATH);
+} catch (e) {
+  console.warn("Local symptom ML model not loaded:", e.message);
+}
+
+// Public dataset only covers general diseases; only these 5 of our 8
+// pathogens have an honest causal mapping. The other 3 (A. baumannii,
+// E. faecium, K. variicola) are hospital-acquired/opportunistic and
+// have no equivalent in general public symptom-checker datasets.
+const DISEASE_TO_PATHOGEN = {
+  "Tuberculosis": "mtb",
+  "Urinary tract infection": "ec",
+  "Pneumonia": "kp",
+  "Gastroenteritis": "vc",
+  "Impetigo": "sa",
+};
+
+// Local ML fallback: runs entirely offline, no API call, trained on a
+// real public dataset (see models/train_symptom_model.py for source).
+// Used when Gemini is unavailable (no key, rate limited, network error).
+function matchSymptomsLocalML(text) {
+  if (!symptomClassifier) return { results: [], noMatch: true, note: "Local model not available", source: "unavailable" };
+
+  const detected = symptomClassifier.extractSymptoms(text);
+  if (detected.length === 0) {
+    return { results: [], noMatch: true, note: "No recognizable symptoms found in the described text", source: "local-ml", detectedSymptoms: [] };
+  }
+
+  const predictions = symptomClassifier.predict(detected);
+  const results = [];
+  for (const p of predictions) {
+    const pathogenId = DISEASE_TO_PATHOGEN[p.disease];
+    if (pathogenId && p.confidence > 0.01) {
+      const pathogen = pathogens.find(x => x.id === pathogenId);
+      if (pathogen) {
+        results.push({
+          pathogen,
+          score: Math.round(p.confidence * 100),
+          matched: detected,
+          reasoning: `Local ML model (trained on ${symptomClassifier.meta.trained_on_samples} real patient records) predicts "${p.disease}" with ${(p.confidence*100).toFixed(1)}% confidence, clinically associated with ${pathogen.name}.`,
+          topBiomarker: pathogen.biomarkers[0],
+        });
+      }
+    }
+    if (results.length >= 5) break;
+  }
+
+  return {
+    results,
+    noMatch: results.length === 0,
+    note: results.length === 0 ? "Symptoms detected but don't map to a pathogen in our panel (dataset covers general diseases; some of our pathogens are hospital-acquired and not represented)." : null,
+    source: "local-ml",
+    detectedSymptoms: detected,
+    topDiseasePrediction: predictions[0],
+  };
+}
 
 async function matchSymptomsAI(text) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -211,4 +271,4 @@ Question: ${question}`;
   }
 }
 
-module.exports = { matchSymptomsAI, compareWithAI, askAboutPathogen };
+module.exports = { matchSymptomsAI, matchSymptomsLocalML, compareWithAI, askAboutPathogen };
