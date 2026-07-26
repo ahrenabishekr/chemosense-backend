@@ -49,9 +49,17 @@ app.get("/", (req, res) => {
 
 // ── SCAN ENGINE ─────────────────────────────────────────────
 app.post("/api/scan/symptoms", async (req, res) => {
-  const { text } = req.body;
+  const { text, forceLocal } = req.body;
   const missing = text === undefined || text === null || text.trim().length === 0;
   if (missing) return res.status(400).json({ error: "text is required" });
+  if (forceLocal) {
+    const { matchSymptomsLocalML } = require("./ai-match.js");
+    const localResult = matchSymptomsLocalML(text);
+    if (localResult.noMatch) {
+      return res.json({ results: [], aiPowered: true, source: "local-ml", note: localResult.note || "No matching pathogen found by local model." });
+    }
+    return res.json({ results: localResult.results, aiPowered: true, source: "local-ml", note: "Demo mode: local trained model forced (Gemini bypassed)." });
+  }
   try {
     const { matchSymptomsAI } = require("./ai-match.js");
     const aiResult = await matchSymptomsAI(text);
