@@ -201,10 +201,54 @@ function matchByBiomarker(biomarkerName) {
   return results;
 }
 
+// Extracts the leading numeric value from an LOD string like "0.5 µM" or "10 ng/mL"
+function parseLodValue(lodStr) {
+  const m = lodStr.match(/^([\d.]+)/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// Statistical model built from our own curated biomarker LOD table (not an
+// external dataset — this project's own literature-researched per-pathogen
+// detection thresholds). Treats each pathogen's LOD as the characteristic
+// concentration for that biomarker, and scores a real sensor reading against
+// all pathogens sharing that biomarker name using a Gaussian likelihood in
+// log-concentration space, softmax-normalized into a genuine confidence
+// distribution (not a fixed "High"/"Moderate" label).
+function matchByBiomarkerReading(biomarkerName, readingValue) {
+  const candidates = [];
+  for (const p of pathogens) {
+    const b = p.biomarkers.find((bm) => bm.name === biomarkerName);
+    if (b) {
+      const lodValue = parseLodValue(b.lod);
+      if (lodValue !== null && lodValue > 0) {
+        candidates.push({ pathogen: p, biomarker: b, lodValue });
+      }
+    }
+  }
+  if (candidates.length === 0) return [];
+
+  const sigma = 0.5; // log10-space spread; ~3x fold characteristic biological variance
+  const logReading = Math.log10(Math.max(readingValue, 1e-9));
+
+  const scored = candidates.map((c) => {
+    const logLod = Math.log10(c.lodValue);
+    const z = (logReading - logLod) / sigma;
+    return { ...c, logLikelihood: -0.5 * z * z };
+  });
+
+  const maxLL = Math.max(...scored.map((s) => s.logLikelihood));
+  const exps = scored.map((s) => Math.exp(s.logLikelihood - maxLL));
+  const sumExp = exps.reduce((a, b) => a + b, 0);
+
+  return scored
+    .map((s, i) => ({ pathogen: s.pathogen, biomarker: s.biomarker, confidence: exps[i] / sumExp }))
+    .sort((a, b) => b.confidence - a.confidence);
+}
+
 function allBiomarkers() {
   const set = new Set();
   pathogens.forEach((p) => p.biomarkers.forEach((b) => set.add(b.name)));
   return Array.from(set).sort();
 }
 
-module.exports = { matchSymptoms, matchByBiomarker, allBiomarkers, pathogens };
+module.exports = { matchSymptoms, matchByBiomarker, matchByBiomarkerReading, allBiomarkers, pathogens };

@@ -30,7 +30,7 @@ function requireRole(...allowedRoles) {
   };
 }
 
-const { matchSymptoms, matchByBiomarker, allBiomarkers, pathogens } = require("./scan-engine");
+const { matchSymptoms, matchByBiomarker, matchByBiomarkerReading, allBiomarkers, pathogens } = require("./scan-engine");
 
 const app = express();
 app.use(cors());
@@ -496,22 +496,35 @@ app.post("/api/sensors/:id/reading", requireAuth, requireRole("technician", "doc
 
     await db.query("UPDATE sensors SET last_reading = ? WHERE id = ?", [reading, req.params.id]);
 
-    // AI-powered clinical interpretation: match this reading against known pathogen biomarker profiles
+    // Statistical clinical interpretation: score this concentration reading
+    // against all pathogens sharing this biomarker, using a Gaussian model
+    // built from our own curated LOD dataset (see scan-engine.js).
     let pathogenMatch = null;
+    let pathogenCandidates = null;
     if (sensor.target_biomarker && (qs_activated || lod_crossed)) {
-      const matches = matchByBiomarker(sensor.target_biomarker);
-      if (matches.length > 0) {
-        const top = matches[0];
+      const scored = matchByBiomarkerReading(sensor.target_biomarker, reading);
+      if (scored.length > 0) {
+        const top = scored[0];
+        const confidencePct = Math.round(top.confidence * 100);
         pathogenMatch = {
           pathogenId: top.pathogen.id,
           pathogenName: top.pathogen.name,
           riskLevel: top.pathogen.riskLevel,
           biomarker: sensor.target_biomarker,
-          confidence: qs_activated ? "High" : "Moderate",
+          confidence: confidencePct >= 70 ? "High" : confidencePct >= 40 ? "Moderate" : "Low",
+          confidencePct,
           reasoning: qs_activated
-            ? `${sensor.target_biomarker} at ${reading} ${unit || sensor.reading_unit} exceeds the quorum sensing threshold — consistent with active ${top.pathogen.name} colonization.`
-            : `${sensor.target_biomarker} detected above the limit of detection — early sign of possible ${top.pathogen.name} presence.`,
+            ? `${sensor.target_biomarker} at ${reading} ${unit || sensor.reading_unit} exceeds the quorum sensing threshold — statistical model gives ${confidencePct}% confidence this matches ${top.pathogen.name} (based on its known LOD of ${top.biomarker.lod}).`
+            : `${sensor.target_biomarker} detected above the limit of detection — statistical model gives ${confidencePct}% confidence this matches ${top.pathogen.name} (based on its known LOD of ${top.biomarker.lod}).`,
         };
+        // if more than one pathogen shares this biomarker, surface the ambiguity honestly
+        if (scored.length > 1) {
+          pathogenCandidates = scored.map(s => ({
+            pathogenId: s.pathogen.id,
+            pathogenName: s.pathogen.name,
+            confidencePct: Math.round(s.confidence * 100),
+          }));
+        }
       }
     }
 
@@ -531,7 +544,7 @@ app.post("/api/sensors/:id/reading", requireAuth, requireRole("technician", "doc
       );
     }
 
-    res.json({ lod_crossed, qs_activated, signal_strength, reading, pathogenMatch });
+    res.json({ lod_crossed, qs_activated, signal_strength, reading, pathogenMatch, pathogenCandidates });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
