@@ -66,7 +66,7 @@ app.post("/api/scan/symptoms", async (req, res) => {
       const localResult = matchSymptomsLocalML(text);
       if (localResult.source === "unavailable") throw new Error("local model unavailable");
       if (localResult.noMatch) {
-        return res.json({ results: [], aiPowered: true, source: "local-ml", note: localResult.note || "No matching pathogen found by local model." });
+        return res.json({ results: [], aiPowered: true, source: "local-ml", note: localResult.note || "No matching pathogen found by local model.", debugDetected: localResult.detectedSymptoms, debugTopPrediction: localResult.topDiseasePrediction });
       }
       return res.json({ results: localResult.results, aiPowered: true, source: "local-ml", note: "Gemini unavailable — using locally trained model (offline, no API needed)." });
     } catch (localErr) {
