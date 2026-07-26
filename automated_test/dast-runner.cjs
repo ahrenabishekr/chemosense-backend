@@ -47,7 +47,7 @@ const ENDPOINTS = [
   { method: "GET", path: "/api/scans", requiresAuth: false, expectedAuth: true, sensitivity: "clinical scan records" },
   { method: "POST", path: "/api/scans", requiresAuth: false, expectedAuth: true, sensitivity: "unauthenticated write — fabricate scan records", body: { sensor_id: 1, patient_id: "x", result: "positive" } },
   { method: "GET", path: "/api/cases", requiresAuth: false, expectedAuth: true, sensitivity: "clinical case data" },
-  { method: "POST", path: "/api/cases", requiresAuth: true, roles: ["technician", "doctor", "admin"], expectedAuth: true, body: { title: "dast-test", patient_id: "x" } },
+  { method: "POST", path: "/api/cases", requiresAuth: true, roles: ["technician", "doctor", "admin"], expectedAuth: true, body: { title: "[DAST-AUTOTEST-DELETE-ME]", patient_id: "x" } },
   { method: "PUT", path: "/api/cases/1", requiresAuth: true, roles: ["doctor", "admin"], expectedAuth: true, body: { notes: "dast-test" } },
   { method: "PATCH", path: "/api/cases/1/outcome", requiresAuth: true, roles: ["doctor", "admin"], expectedAuth: true, body: { outcome: "improved" } },
   { method: "GET", path: "/api/dashboard", requiresAuth: false, expectedAuth: true, sensitivity: "aggregated clinical stats" },
@@ -370,6 +370,25 @@ async function testCrossRolePatientAccessScope() {
   }
 }
 
+async function cleanupTestData() {
+  console.log("\n=== Cleanup: removing test-created cases ===");
+  try {
+    const doctorToken = TOKENS.doctor;
+    const listRes = await req("GET", "/api/cases", { token: doctorToken });
+    const cases = JSON.parse(listRes.body);
+    if (!Array.isArray(cases)) { console.log("  could not list cases for cleanup"); return; }
+    const junk = cases.filter((c) => c.title && c.title.includes("DAST-AUTOTEST"));
+    for (const c of junk) {
+      await req("DELETE", `/api/cases/${c.id}`, { token: doctorToken });
+      console.log(`  deleted test case id ${c.id}`);
+      await sleep(100);
+    }
+    console.log(`  cleanup complete: ${junk.length} test case(s) removed`);
+  } catch (e) {
+    console.log("  cleanup failed:", e.message);
+  }
+}
+
 async function main() {
   await testMissingAuthByDesign();
   await testAuthNBypass();
@@ -382,6 +401,7 @@ async function main() {
   await testDuplicateRegistration();
   await testPublicEndpointSmoke();
   await testCrossRolePatientAccessScope();
+  await cleanupTestData();
 
   fs.writeFileSync(path.join(__dirname, "report.json"), JSON.stringify(results, null, 2));
 
