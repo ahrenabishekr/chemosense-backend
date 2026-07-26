@@ -13,11 +13,14 @@ try {
 // pathogens have an honest causal mapping. The other 3 (A. baumannii,
 // E. faecium, K. variicola) are hospital-acquired/opportunistic and
 // have no equivalent in general public symptom-checker datasets.
+// NOTE: scan-engine.js's pathogen list doesn't include M. tuberculosis or
+// V. cholerae (backend/frontend pathogen lists have drifted apart — see
+// project notes). Tuberculosis and Gastroenteritis mappings are omitted
+// until those two pathogens are added to scan-engine.js with full
+// biomarker data. Only map to ids that actually exist below.
 const DISEASE_TO_PATHOGEN = {
-  "Tuberculosis": "mtb",
   "Urinary tract infection": "ec",
   "Pneumonia": "kp",
-  "Gastroenteritis": "vc",
   "Impetigo": "sa",
 };
 
